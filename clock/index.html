@@ -52,11 +52,27 @@
         flex: 0 0 120px;
         background-color: var(--bg-panel);
         border-bottom: 2px solid var(--border-color);
-        display: flex;
-        justify-content: space-between;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+        align-items: center;
         padding: 15px 25px;
         box-shadow: 0 4px 10px rgba(0,0,0,0.5);
         z-index: 10;
+    }
+
+    #home-link {
+        justify-self: start;
+        padding: 8px 12px;
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        color: var(--text-main);
+        text-decoration: none;
+        white-space: nowrap;
+    }
+
+    #home-link:hover, #home-link:focus-visible {
+        background: #2a2a32;
+        border-color: #52525b;
     }
 
     #track-resize-handle {
@@ -103,6 +119,7 @@
     #dashboard {
         display: flex;
         gap: 40px;
+        justify-self: center;
     }
 
     .dash-item {
@@ -146,6 +163,7 @@
         display: flex;
         align-items: center;
         gap: 20px;
+        justify-self: end;
     }
 
     .control-row {
@@ -485,7 +503,9 @@
 
         #top-panel {
             flex: 0 0 auto;
+            display: flex;
             flex-direction: column;
+            align-items: stretch;
             gap: 14px;
             padding: 12px 14px;
         }
@@ -493,6 +513,7 @@
         #dashboard {
             flex-wrap: wrap;
             gap: 12px 24px;
+            justify-self: auto;
         }
 
         #live-time { font-size: 34px; }
@@ -501,6 +522,7 @@
         #controls {
             flex-wrap: wrap;
             gap: 12px;
+            justify-self: auto;
         }
 
         .control-row { flex-wrap: wrap; }
@@ -536,6 +558,7 @@
 
     <!-- TOP PANEL -->
     <div id="top-panel">
+        <a id="home-link" href="../">HOME</a>
         <div id="dashboard">
             <div class="dash-item">
                 <div class="label">System Time</div>

@@ -53,8 +53,9 @@
         background-color: var(--bg-panel);
         border-bottom: 2px solid var(--border-color);
         display: grid;
-        grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+        grid-template-columns: auto minmax(0, 1fr) auto;
         align-items: center;
+        column-gap: 28px;
         padding: 15px 25px;
         box-shadow: 0 4px 10px rgba(0,0,0,0.5);
         z-index: 10;
@@ -119,7 +120,7 @@
     #dashboard {
         display: flex;
         gap: 40px;
-        justify-self: center;
+        justify-self: start;
     }
 
     .dash-item {

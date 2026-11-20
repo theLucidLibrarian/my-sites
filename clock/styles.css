@@ -167,6 +167,7 @@
 
     #schedule-summary { display: contents; }
     #schedule-summary > .dash-item:last-child { position: relative; }
+    #clock-date-item > .label { display: none; }
 
     #live-time { font-size: 42px; font-weight: bold; line-height: 1; }
     #live-date { font-size: var(--date-font-size, 22px); font-weight: bold; color: var(--text-dim); margin-top: 4px; white-space: nowrap; }
@@ -728,8 +729,8 @@
         #dashboard {
             --desktop-clock-font-size: 42px;
             display: grid;
-            grid-template-columns: minmax(max-content, 1fr) fit-content(40%) fit-content(30%) max-content;
-            grid-template-rows: minmax(calc(44px + var(--desktop-clock-font-size)), auto);
+            grid-template-columns: max-content minmax(0, 2.5fr) minmax(0, 1fr) minmax(0, 1fr) max-content;
+            grid-template-rows: minmax(calc(22px + var(--desktop-clock-font-size)), auto);
             min-width: 0;
             width: 100%;
             column-gap: clamp(8px, 1.5vw, 40px);
@@ -739,17 +740,26 @@
             align-items: start;
         }
         #dashboard .dash-item { min-width: 0; }
-        #dashboard > .dash-item {
+        #dashboard > .dash-item { display: contents; }
+        #clock-time-item {
             grid-area: 1 / 1;
-            align-self: start;
+            align-self: end;
         }
-        #schedule-summary > .dash-item { align-self: end; }
+        #clock-date-item { grid-area: 1 / 2; min-width: 0; width: fit-content; max-width: 100%; align-self: end; }
+        #clock-date-item > .label { display: block; text-align: left; }
+        #schedule-summary > .dash-item { width: fit-content; max-width: 100%; align-self: end; justify-self: end; }
         #schedule-summary > .dash-item > .label { text-align: right; }
-        #schedule-summary > .dash-item:first-child { grid-area: 1 / 2; }
-        #next-block-item { grid-area: 1 / 3; }
-        #schedule-summary > .dash-item:last-child { grid-area: 1 / 4; }
+        #schedule-summary > .dash-item:first-child { grid-area: 1 / 3; }
+        #next-block-item { grid-area: 1 / 4; }
+        #schedule-summary > .dash-item:last-child { grid-area: 1 / 5; }
         #popout-status:empty { display: none; }
         #live-time { font-size: var(--desktop-clock-font-size); }
+        #live-date {
+            font-size: min(var(--desktop-clock-font-size), var(--fitted-font-size, var(--desktop-clock-font-size)));
+            color: var(--text-main);
+            line-height: 1;
+            margin-top: 0;
+        }
         #current-period, #next-period {
             font-size: min(var(--desktop-clock-font-size), var(--fitted-font-size, var(--desktop-clock-font-size)));
             line-height: 1;
@@ -783,6 +793,12 @@
         #home-link, .home-blob-circle, .home-icon { transition: none; }
     }
 
+    @media (min-width: 1200px) {
+        #dashboard {
+            grid-template-columns: max-content minmax(0, 1fr) fit-content(22%) fit-content(22%) max-content;
+        }
+    }
+
     @media (min-width: 801px) and (max-width: 1050px) {
         body { --desktop-pan-width: min(380px, calc(100vw - 675px)); }
         #zoom-controls { grid-template-columns: max-content max-content 80px 6ch max-content; }
@@ -791,7 +807,6 @@
 
     @media (min-width: 801px) and (max-width: 999px) {
         #dashboard { --desktop-clock-font-size: 36px; }
-        #live-date { font-size: var(--date-font-size, 16px); }
     }
 
     /* MOBILE / NARROW SCREENS */

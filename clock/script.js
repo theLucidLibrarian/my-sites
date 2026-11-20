@@ -613,6 +613,8 @@
         if (orientationChanged) buildTimeline();
         updateTick();
         fitLiveDate();
+        fitSummaryName(ui.currPeriod);
+        fitSummaryName(ui.nextPeriod);
     });
     verticalTimelineQuery.addEventListener('change', () => {
         window.dispatchEvent(new Event('resize'));
@@ -946,6 +948,11 @@
 
     function fitLiveDate() {
         ui.liveDate.style.removeProperty('--date-font-size');
+        if (!isVerticalTimeline()) {
+            fitTextToWidth(ui.liveDate, () => ui.liveDate.parentElement.clientWidth);
+            return;
+        }
+        ui.liveDate.style.removeProperty('--fitted-font-size');
         if (!ui.liveDate.textContent) return;
 
         const range = document.createRange();
@@ -1081,13 +1088,11 @@
         positionPlayheadBubble();
     });
 
-    let lastClockWidth = ui.liveTime.parentElement.clientWidth;
-    new ResizeObserver(() => {
-        const width = ui.liveTime.parentElement.clientWidth;
-        if (width === lastClockWidth) return;
-        lastClockWidth = width;
+    const dateWidthObserver = new ResizeObserver(() => {
         fitLiveDate();
-    }).observe(ui.liveTime.parentElement);
+    });
+    dateWidthObserver.observe(ui.liveTime.parentElement);
+    dateWidthObserver.observe(ui.liveDate.parentElement);
 
     // Auto-refresh layout at midnight
     setInterval(() => {

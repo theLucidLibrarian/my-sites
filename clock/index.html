@@ -11,7 +11,40 @@
 
     <!-- TOP PANEL -->
     <div id="top-panel">
-        <a id="home-link" href="../">HOME</a>
+        <a id="home-link" href="../" aria-label="Home" title="Home">
+            <svg class="home-blob" viewBox="0 0 120 52" aria-hidden="true">
+                <defs>
+                    <filter id="home-metaball" x="-50%" y="-100%" width="200%" height="300%" color-interpolation-filters="sRGB">
+                        <feGaussianBlur in="SourceAlpha" stdDeviation="3" result="blur"></feGaussianBlur>
+                        <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 10 -4" result="shape"></feColorMatrix>
+                        <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 10 -1.6" result="outline"></feColorMatrix>
+                        <feFlood class="home-blob-border" result="border-color"></feFlood>
+                        <feComposite in="border-color" in2="outline" operator="in" result="border"></feComposite>
+                        <feFlood class="home-blob-fill" result="fill-color"></feFlood>
+                        <feComposite in="fill-color" in2="shape" operator="in" result="fill"></feComposite>
+                        <feMerge><feMergeNode in="border"></feMergeNode><feMergeNode in="fill"></feMergeNode></feMerge>
+                    </filter>
+                    <filter id="home-metaball-mobile" x="-50%" y="-100%" width="200%" height="300%" color-interpolation-filters="sRGB">
+                        <feGaussianBlur in="SourceAlpha" stdDeviation="3" result="blur"></feGaussianBlur>
+                        <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 10 -4" result="shape"></feColorMatrix>
+                        <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 10 -1" result="outline"></feColorMatrix>
+                        <feFlood class="home-blob-border" result="border-color"></feFlood>
+                        <feComposite in="border-color" in2="outline" operator="in" result="border"></feComposite>
+                        <feFlood class="home-blob-fill" result="fill-color"></feFlood>
+                        <feComposite in="fill-color" in2="shape" operator="in" result="fill"></feComposite>
+                        <feMerge><feMergeNode in="border"></feMergeNode><feMergeNode in="fill"></feMergeNode></feMerge>
+                    </filter>
+                </defs>
+                <g filter="url(#home-metaball)">
+                    <rect x="-30" y="-40" width="180" height="38"></rect>
+                    <circle class="home-blob-circle" cx="60" cy="16" r="16"></circle>
+                </g>
+            </svg>
+            <svg class="home-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M3 10.5 12 3l9 7.5"></path>
+                <path d="M5.5 9.5V21h13V9.5M9.5 21v-6h5v6"></path>
+            </svg>
+        </a>
         <div id="dashboard">
             <div class="dash-item">
                 <div class="label">System Time</div>

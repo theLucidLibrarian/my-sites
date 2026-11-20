@@ -1073,6 +1073,14 @@
     summaryNameObserver.observe(ui.currPeriod.parentElement);
     summaryNameObserver.observe(ui.nextPeriod.parentElement);
 
+    document.fonts.ready.then(() => {
+        fitLiveDate();
+        fitSummaryName(ui.currPeriod);
+        fitSummaryName(ui.nextPeriod);
+        if (!isVerticalTimeline()) fitTimelineBlockText();
+        positionPlayheadBubble();
+    });
+
     let lastClockWidth = ui.liveTime.parentElement.clientWidth;
     new ResizeObserver(() => {
         const width = ui.liveTime.parentElement.clientWidth;

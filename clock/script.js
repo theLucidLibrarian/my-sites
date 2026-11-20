@@ -2,14 +2,17 @@
     const END_MINS = 24 * 60;  // 12:00 AM (midnight)
     const TOTAL_MINS = END_MINS - START_MINS; // 420 mins in the viewable track
     const FOCUS_ZOOM = 800;
+    const MAX_ZOOM = 1600;
+    const verticalTimelineQuery = window.matchMedia('(max-width: 800px)');
+    let previousVerticalTimeline = verticalTimelineQuery.matches;
 
     const savedZoom = Number(localStorage.getItem('bellScheduleZoom'));
     let currentZoom = Number.isFinite(savedZoom) && savedZoom >= 100
-        ? Math.min(800, savedZoom)
+        ? Math.min(MAX_ZOOM, savedZoom)
         : 100;
     let currentScheduleMinutes = START_MINS;
     let followPlayhead = true;
-    let expectedScrollLeft = null;
+    let expectedTimelineScroll = null;
     let lastFollowMinute = null;
     let displayedDateKey = '';
     const dateFormatter = new Intl.DateTimeFormat(undefined, {
@@ -137,6 +140,7 @@
         liveTime: document.getElementById('live-time'),
         liveDate: document.getElementById('live-date'),
         currPeriod: document.getElementById('current-period'),
+        nextPeriod: document.getElementById('next-period'),
         countdown: document.getElementById('countdown'),
         popoutButton: document.getElementById('btn-popout'),
         popoutStatus: document.getElementById('popout-status'),
@@ -230,19 +234,25 @@
     let countdownWindow = null;
     let countdownWindowValues = null;
 
+    function getNextBlock() {
+        return currentLayout.find(block =>
+            block.type === 'editable' && block.s > currentScheduleMinutes);
+    }
+
+    function getBlockName(block) {
+        return (userPrefs[block.id] || {}).name || block.defaultName;
+    }
+
+    function getBlockColor(block) {
+        return (userPrefs[block.id] || {}).color || DEFAULT_COLORS[block.id] || '#333333';
+    }
+
     function updateCountdownWindow() {
         if (!countdownWindowValues || !countdownWindow || countdownWindow.closed) return;
         countdownWindowValues.currentPeriod.textContent = ui.currPeriod.textContent;
         countdownWindowValues.countdown.textContent = ui.countdown.textContent;
-
-        const nextBlock = currentLayout.find(block =>
-            block.type === 'editable' && block.s > currentScheduleMinutes);
-        if (nextBlock) {
-            const pref = userPrefs[nextBlock.id] || {};
-            countdownWindowValues.nextPeriod.textContent = pref.name || nextBlock.defaultName;
-        } else {
-            countdownWindowValues.nextPeriod.textContent = 'None';
-        }
+        const nextBlock = getNextBlock();
+        countdownWindowValues.nextPeriod.textContent = nextBlock ? getBlockName(nextBlock) : 'None';
     }
 
     async function openCountdownWindow() {
@@ -252,6 +262,10 @@
         }
 
         ui.popoutStatus.textContent = '';
+        if (!window.documentPictureInPicture) {
+            ui.popoutStatus.textContent = 'Always-on-top pop-out is not supported by this browser.';
+            return;
+        }
         try {
             countdownWindow = await window.documentPictureInPicture.requestWindow({
                 width: 320,
@@ -298,7 +312,7 @@
             countdownWindow.document.body.innerHTML = `
                 <main>
                     <div class="row"><span class="label">Current period:</span> <span id="current-period-value" class="period-value">--</span></div>
-                    <div class="row"><span class="label">Time Remaining:</span> <span id="countdown-value">--:--</span></div>
+                    <div class="row"><span class="label">Time Remaining:</span> <span id="countdown-value">--:--:--</span></div>
                     <div class="row"><span class="label">Up next:</span> <span id="next-period" class="period-value">--</span></div>
                 </main>
             `;
@@ -324,6 +338,10 @@
         }
     }
 
+    document.querySelectorAll('.summary-popout-trigger').forEach(trigger => {
+        trigger.addEventListener('click', openCountdownWindow);
+    });
+
     if ('documentPictureInPicture' in window) {
         ui.popoutButton.addEventListener('click', openCountdownWindow);
     } else {
@@ -343,9 +361,17 @@
     }
 
     function setTrackHeight(height) {
+        if (isVerticalTimeline()) {
+            ui.track.style.flex = '';
+            ui.track.style.height = '';
+            ui.trackResizeHandle.hidden = true;
+            return;
+        }
+
         const { minHeight, maxHeight } = getTrackHeightLimits();
         const clampedHeight = Math.min(maxHeight, Math.max(minHeight, height));
 
+        ui.trackResizeHandle.hidden = false;
         ui.track.style.flex = `0 0 ${clampedHeight}px`;
         ui.trackResizeHandle.setAttribute('aria-valuemin', minHeight);
         ui.trackResizeHandle.setAttribute('aria-valuemax', maxHeight);
@@ -388,52 +414,114 @@
         }
     });
 
-    function getTimelineViewportWidth() {
+    function isVerticalTimeline() {
+        return verticalTimelineQuery.matches;
+    }
+
+    function getTimelineViewportExtent() {
         const style = getComputedStyle(ui.timelineViewport);
-        return ui.timelineViewport.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+        const vertical = isVerticalTimeline();
+        const paddingStart = parseFloat(vertical ? style.paddingTop : style.paddingLeft);
+        const paddingEnd = parseFloat(vertical ? style.paddingBottom : style.paddingRight);
+        return (vertical ? ui.timelineViewport.clientHeight : ui.timelineViewport.clientWidth)
+            - paddingStart - paddingEnd;
+    }
+
+    function getTimelineScrollPosition() {
+        return isVerticalTimeline()
+            ? ui.timelineViewport.scrollTop
+            : ui.timelineViewport.scrollLeft;
+    }
+
+    function formatZoom(zoom) {
+        let numerator = zoom;
+        let denominator = FOCUS_ZOOM;
+        while (denominator !== 0) {
+            [numerator, denominator] = [denominator, numerator % denominator];
+        }
+        const divisor = numerator;
+        const whole = zoom / divisor;
+        const base = FOCUS_ZOOM / divisor;
+        return base === 1 ? `${whole}x` : `${whole}/${base}x`;
     }
 
     function setZoom(zoom, centerPlayhead = true) {
-        const viewportWidthBeforeZoom = getTimelineViewportWidth();
-        const previousWidth = ui.ruler.clientWidth;
-        const previousGutter = currentZoom > 100 ? viewportWidthBeforeZoom / 2 : 0;
-        const previousCenter = previousWidth > 0
-            ? (ui.timelineViewport.scrollLeft + viewportWidthBeforeZoom / 2 - previousGutter) / previousWidth
+        const vertical = isVerticalTimeline();
+        const viewportExtentBeforeZoom = getTimelineViewportExtent();
+        const previousExtent = vertical ? ui.ruler.clientHeight : ui.ruler.clientWidth;
+        const previousGutter = parseFloat(getComputedStyle(ui.timelineContent)[
+            vertical ? 'paddingTop' : 'paddingLeft'
+        ]);
+        const previousCenter = previousExtent > 0
+            ? (getTimelineScrollPosition() + viewportExtentBeforeZoom / 2 - previousGutter) / previousExtent
             : 0.5;
-        currentZoom = Math.min(800 , Math.max(100, zoom));
+        currentZoom = Math.min(MAX_ZOOM, Math.max(100, zoom));
         localStorage.setItem('bellScheduleZoom', currentZoom);
         ui.zoomSlider.value = currentZoom;
-        ui.zoomValue.value = `${currentZoom}%`;
+        const zoomLabel = formatZoom(currentZoom);
+        ui.zoomValue.value = zoomLabel;
+        ui.zoomSlider.setAttribute('aria-valuetext', zoomLabel);
 
-        const viewportWidth = getTimelineViewportWidth();
-        const timelineWidth = viewportWidth * currentZoom / 100;
-        const sideGutter = currentZoom > 100 ? viewportWidth / 2 : 0;
-        ui.timelineContent.style.width = `${timelineWidth + sideGutter * 2}px`;
-        ui.timelineContent.style.paddingLeft = `${sideGutter}px`;
-        ui.timelineContent.style.paddingRight = `${sideGutter}px`;
-        ui.ruler.style.width = `${timelineWidth}px`;
-        ui.track.style.width = `${timelineWidth}px`;
-        ui.trackResizeHandle.style.width = `${timelineWidth}px`;
+        const viewportExtent = getTimelineViewportExtent();
+        const timelineExtent = Math.round(viewportExtent * currentZoom / 100);
+        const sideGutter = vertical ? viewportExtent * 0.05 : 0;
+        if (vertical) {
+            ui.timelineContent.style.width = '';
+            ui.timelineContent.style.height = `${timelineExtent + sideGutter * 2}px`;
+            ui.timelineContent.style.paddingLeft = '';
+            ui.timelineContent.style.paddingRight = '';
+            ui.timelineContent.style.paddingTop = `${sideGutter}px`;
+            ui.timelineContent.style.paddingBottom = `${sideGutter}px`;
+            ui.ruler.style.width = '';
+            ui.ruler.style.height = `${timelineExtent}px`;
+            ui.track.style.flex = '';
+            ui.track.style.width = '';
+            ui.track.style.height = `${timelineExtent}px`;
+            ui.trackResizeHandle.style.width = '';
+            ui.trackResizeHandle.style.height = `${timelineExtent}px`;
+        } else {
+            ui.timelineContent.style.width = `${timelineExtent + sideGutter * 2}px`;
+            ui.timelineContent.style.height = '';
+            ui.timelineContent.style.paddingLeft = `${sideGutter}px`;
+            ui.timelineContent.style.paddingRight = `${sideGutter}px`;
+            ui.timelineContent.style.paddingTop = '';
+            ui.timelineContent.style.paddingBottom = '';
+            ui.ruler.style.width = `${timelineExtent}px`;
+            ui.ruler.style.height = '';
+            ui.track.style.width = `${timelineExtent}px`;
+            ui.track.style.height = '';
+            ui.trackResizeHandle.style.width = `${timelineExtent}px`;
+            ui.trackResizeHandle.style.height = '';
+            fitTimelineBlockText();
+        }
         buildRuler();
         positionPlayheadBubble();
 
         if (centerPlayhead && followPlayhead) {
             focusPlayhead();
         } else if (centerPlayhead) {
-            setTimelineScroll(sideGutter + previousCenter * timelineWidth - viewportWidth / 2);
+            setTimelineScroll(sideGutter + previousCenter * timelineExtent - viewportExtent / 2);
         } else {
             setTimelineScroll(0);
         }
     }
 
     function setTimelineScroll(left) {
-        const maxScroll = Math.max(0, ui.timelineViewport.scrollWidth - ui.timelineViewport.clientWidth);
+        const vertical = isVerticalTimeline();
+        const maxScroll = Math.max(0, vertical
+            ? ui.timelineViewport.scrollHeight - ui.timelineViewport.clientHeight
+            : ui.timelineViewport.scrollWidth - ui.timelineViewport.clientWidth);
         const target = Math.min(maxScroll, Math.max(0, left));
-        if (Math.abs(ui.timelineViewport.scrollLeft - target) > 0.01) {
-            const previousScroll = ui.timelineViewport.scrollLeft;
-            ui.timelineViewport.scrollLeft = target;
-            if (ui.timelineViewport.scrollLeft !== previousScroll) {
-                expectedScrollLeft = ui.timelineViewport.scrollLeft;
+        const currentScroll = getTimelineScrollPosition();
+        if (Math.abs(currentScroll - target) > 0.01) {
+            if (vertical) {
+                ui.timelineViewport.scrollTop = target;
+            } else {
+                ui.timelineViewport.scrollLeft = target;
+            }
+            const nextScroll = getTimelineScrollPosition();
+            if (nextScroll !== currentScroll) {
+                expectedTimelineScroll = nextScroll;
             }
         }
         syncPanSlider();
@@ -447,24 +535,31 @@
     }
 
     function focusPlayhead() {
-        const viewportWidth = getTimelineViewportWidth();
-        const timelineWidth = ui.ruler.clientWidth;
-        const sideGutter = currentZoom > 100 ? viewportWidth / 2 : 0;
+        const viewportExtent = getTimelineViewportExtent();
+        const timelineExtent = isVerticalTimeline() ? ui.ruler.clientHeight : ui.ruler.clientWidth;
+        const sideGutter = parseFloat(getComputedStyle(ui.timelineContent)[
+            isVerticalTimeline() ? 'paddingTop' : 'paddingLeft'
+        ]);
         const progress = Math.min(1, Math.max(0,
             (currentScheduleMinutes - START_MINS) / TOTAL_MINS));
-        setTimelineScroll(sideGutter + progress * timelineWidth - viewportWidth / 2);
+        setTimelineScroll(sideGutter + progress * timelineExtent - viewportExtent / 2);
     }
 
     function syncPanSlider() {
-        const maxScroll = ui.timelineViewport.scrollWidth - ui.timelineViewport.clientWidth;
-        ui.panSlider.disabled = maxScroll <= 0;
+        const maxScroll = Math.max(0, isVerticalTimeline()
+            ? ui.timelineViewport.scrollHeight - ui.timelineViewport.clientHeight
+            : ui.timelineViewport.scrollWidth - ui.timelineViewport.clientWidth);
+        const vertical = isVerticalTimeline();
+        ui.panSlider.setAttribute('aria-label',
+            vertical ? 'Scroll schedule vertically' : 'Scroll schedule horizontally');
+        ui.panSlider.disabled = maxScroll <= 1;
         ui.panSlider.value = maxScroll > 0
-            ? Math.round(ui.timelineViewport.scrollLeft / maxScroll * Number(ui.panSlider.max))
+            ? Math.round(getTimelineScrollPosition() / maxScroll * Number(ui.panSlider.max))
             : 0;
     }
 
     ui.zoomSlider.addEventListener('input', () => setZoom(Number(ui.zoomSlider.value)));
-    ui.zoomReset.addEventListener('click', () => setZoom(100, false));
+    ui.zoomReset.addEventListener('click', () => setZoom(FOCUS_ZOOM, false));
     ui.focusPlayhead.addEventListener('click', () => {
         setFollowing(true);
         updateTick();
@@ -472,14 +567,17 @@
     });
     ui.panSlider.addEventListener('input', () => {
         setFollowing(false);
-        const maxScroll = ui.timelineViewport.scrollWidth - ui.timelineViewport.clientWidth;
+        const maxScroll = isVerticalTimeline()
+            ? ui.timelineViewport.scrollHeight - ui.timelineViewport.clientHeight
+            : ui.timelineViewport.scrollWidth - ui.timelineViewport.clientWidth;
         setTimelineScroll(maxScroll * Number(ui.panSlider.value) / Number(ui.panSlider.max));
     });
     ui.timelineViewport.addEventListener('scroll', () => {
-        if (expectedScrollLeft === null || Math.abs(ui.timelineViewport.scrollLeft - expectedScrollLeft) > 1) {
+        const currentScroll = getTimelineScrollPosition();
+        if (expectedTimelineScroll === null || Math.abs(currentScroll - expectedTimelineScroll) > 1) {
             setFollowing(false);
         }
-        expectedScrollLeft = null;
+        expectedTimelineScroll = null;
         syncPanSlider();
     });
     ui.timelineViewport.addEventListener('wheel', (event) => {
@@ -489,15 +587,35 @@
     }, { passive: false });
 
     window.addEventListener('resize', () => {
-        setZoom(currentZoom);
-        if (ui.track.style.flex !== '') {
-            setTrackHeight(ui.track.getBoundingClientRect().height);
+        const vertical = isVerticalTimeline();
+        const orientationChanged = vertical !== previousVerticalTimeline;
+        previousVerticalTimeline = vertical;
+        if (vertical) {
+            ui.trackResizeHandle.hidden = true;
+            ui.track.style.flex = '';
+            ui.track.style.height = '';
         } else {
-            const { minHeight, maxHeight } = getTrackHeightLimits();
-            ui.trackResizeHandle.setAttribute('aria-valuemin', minHeight);
-            ui.trackResizeHandle.setAttribute('aria-valuemax', maxHeight);
-            ui.trackResizeHandle.setAttribute('aria-valuenow', Math.round(ui.track.getBoundingClientRect().height));
+            ui.timelineContent.style.height = '';
+            ui.timelineContent.style.paddingTop = '';
+            ui.timelineContent.style.paddingBottom = '';
+            ui.ruler.style.height = '';
+            ui.track.style.height = '';
+            ui.trackResizeHandle.hidden = false;
         }
+        setZoom(currentZoom);
+        if (!vertical && ui.track.style.flex !== '') {
+            setTrackHeight(ui.track.getBoundingClientRect().height);
+        } else if (!vertical) {
+            const { maxHeight } = getTrackHeightLimits();
+            const savedHeight = Number(localStorage.getItem('bellScheduleTrackHeight'));
+            setTrackHeight(Number.isFinite(savedHeight) && savedHeight > 0 ? savedHeight : maxHeight);
+        }
+        if (orientationChanged) buildTimeline();
+        updateTick();
+        fitLiveDate();
+    });
+    verticalTimelineQuery.addEventListener('change', () => {
+        window.dispatchEvent(new Event('resize'));
     });
     const { maxHeight: trackMaxHeight } = getTrackHeightLimits();
     const savedTrackHeight = Number(localStorage.getItem('bellScheduleTrackHeight'));
@@ -507,13 +625,14 @@
 
     // Ruler Generation
     function buildRuler() {
+        const vertical = isVerticalTimeline();
         ui.ruler.replaceChildren(ui.rulerPlayhead, ui.boundaryLabels);
         ui.boundaryLabelContent.replaceChildren();
-        const rulerWidth = ui.ruler.clientWidth;
+        const rulerExtent = vertical ? ui.ruler.clientHeight : ui.ruler.clientWidth;
         const boundaryWidth = ui.boundaryLabels.clientWidth;
-        const pixelsPerMinute = rulerWidth / TOTAL_MINS;
-        const labelIntervals = [1, 5, 10, 15, 30, 60];
-        const interval = labelIntervals.find(minutes => minutes * pixelsPerMinute >= 80)
+        const pixelsPerMinute = rulerExtent / TOTAL_MINS;
+        const labelIntervals = vertical ? [1, 5, 10, 15, 30, 60, 120, 180, 240] : [1, 5, 10, 15, 30, 60];
+        const interval = labelIntervals.find(minutes => minutes * pixelsPerMinute >= (vertical ? 24 : 80))
             || labelIntervals[labelIntervals.length - 1];
         const boundaries = new Map();
         currentLayout.filter(block => block.type === 'editable').forEach(block => {
@@ -527,6 +646,7 @@
         const rows = [];
         const boundaryLabels = Array.from(boundaries, ([minute, descriptions]) => {
             const position = (minute - START_MINS) * pixelsPerMinute;
+            if (vertical) return { minute, descriptions };
             const left = Math.max(0, Math.min(boundaryWidth - 64, position - 32));
             let row = rows.findIndex(end => left >= end);
             if (row === -1) row = rows.length;
@@ -534,35 +654,69 @@
             return { minute, descriptions, left, row };
         });
         const labelOffset = Math.max(0, ui.boundaryLabels.clientHeight - rows.length * 16);
-        ui.boundaryLabelContent.style.height = `${labelOffset + rows.length * 16}px`;
+        if (!vertical) ui.boundaryLabelContent.style.height = `${labelOffset + rows.length * 16}px`;
 
+        const tickPaths = ['', '', ''];
         for (let m = START_MINS; m <= END_MINS; m++) {
             let pct = ((m - START_MINS) / TOTAL_MINS) * 100;
             
-            let tick = document.createElement('div');
-            tick.className = 'tick';
-            tick.style.left = `${pct}%`;
-            tick.style.height = m % 60 === 0 ? '12px' : m % 5 === 0 ? '8px' : '4px';
-            if (m % 5 !== 0) tick.style.opacity = '0.5';
-            ui.ruler.appendChild(tick);
+            if (vertical) {
+                let tick = document.createElement('div');
+                tick.className = 'tick';
+                tick.style.top = `${pct}%`;
+                tick.style.width = m % 60 === 0 ? '12px' : m % 5 === 0 ? '8px' : '4px';
+                if (m % 5 !== 0) tick.style.opacity = '0.5';
+                ui.ruler.appendChild(tick);
+            } else {
+                const kind = m % 60 === 0 ? 2 : m % 5 === 0 ? 1 : 0;
+                tickPaths[kind] += `M${m - START_MINS} 12v-${[4, 8, 12][kind]}`;
+            }
             
             if (m % interval === 0) {
                 let label = document.createElement('div');
                 label.className = 'tick-label';
-                label.style.left = `${Math.max(32, Math.min(rulerWidth - 32, (m - START_MINS) * pixelsPerMinute))}px`;
+                const position = Math.max(vertical ? 8 : 32,
+                    Math.min(rulerExtent - (vertical ? 8 : 32), (m - START_MINS) * pixelsPerMinute));
+                if (vertical) {
+                    label.style.top = `${position}px`;
+                } else {
+                    label.style.left = `${position}px`;
+                }
                 label.textContent = `${formatTime(m)} ${m % 1440 < 12 * 60 ? 'AM' : 'PM'}`;
                 ui.ruler.appendChild(label);
             }
         }
 
+        if (!vertical) {
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.classList.add('ruler-ticks');
+            svg.setAttribute('viewBox', `0 0 ${TOTAL_MINS} 12`);
+            svg.setAttribute('preserveAspectRatio', 'none');
+            svg.setAttribute('aria-hidden', 'true');
+            tickPaths.forEach((commands, index) => {
+                const path = document.createElementNS(svg.namespaceURI, 'path');
+                path.setAttribute('d', commands);
+                path.setAttribute('vector-effect', 'non-scaling-stroke');
+                if (index === 0) path.setAttribute('opacity', '0.5');
+                svg.appendChild(path);
+            });
+            ui.ruler.appendChild(svg);
+        }
+
         boundaryLabels.forEach(({ minute, descriptions, left, row }) => {
             const tick = document.createElement('div');
             tick.className = 'boundary-tick';
-            tick.style.left = `${(minute - START_MINS) / TOTAL_MINS * 100}%`;
-            tick.style.height = '12px';
+            if (vertical) {
+                tick.style.top = `${(minute - START_MINS) / TOTAL_MINS * 100}%`;
+                tick.style.width = '12px';
+            } else {
+                tick.style.left = `${(minute - START_MINS) / TOTAL_MINS * 100}%`;
+                tick.style.height = '12px';
+            }
             tick.title = descriptions.join('; ');
             ui.ruler.appendChild(tick);
 
+            if (vertical) return;
             const label = document.createElement('div');
             label.className = 'boundary-label';
             label.style.left = `${left}px`;
@@ -610,7 +764,35 @@
         buildTimeline();
     }
 
+    function fitBlockText(block, width) {
+        block.querySelectorAll('.block-name, .block-time').forEach(element => {
+            if (width <= 0) {
+                element.style.setProperty('--fitted-font-size', '0px');
+            } else {
+                fitTextToWidth(element, () => width);
+            }
+        });
+    }
+
+    const blockTextObserver = new ResizeObserver(entries => {
+        if (isVerticalTimeline()) return;
+        entries.forEach(entry => {
+            fitBlockText(entry.target, entry.contentRect.width);
+        });
+    });
+
+    function fitTimelineBlockText() {
+        ui.track.querySelectorAll('.block.editable').forEach(block => {
+            const style = getComputedStyle(block);
+            const width = block.getBoundingClientRect().width
+                - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
+                - parseFloat(style.borderLeftWidth) - parseFloat(style.borderRightWidth);
+            fitBlockText(block, width);
+        });
+    }
+
     function buildTimeline() {
+        blockTextObserver.disconnect();
         // Clear old blocks, keeping playhead
         Array.from(ui.track.children).forEach(child => {
             if (child.id !== 'playhead') ui.track.removeChild(child);
@@ -632,22 +814,27 @@
         }
 
         if (currentTimeMarker < END_MINS) {
-            currentLayout.push({ name: 'After School', s: currentTimeMarker, e: END_MINS, type: 'passing' });
+            currentLayout.push({ name: 'Afterschool', s: currentTimeMarker, e: END_MINS, type: 'passing' });
         }
 
         // Render to Track
         currentLayout.forEach(b => {
             let dur = b.e - b.s;
             let pct = (dur / TOTAL_MINS) * 100;
+            const vertical = isVerticalTimeline();
             
             let el = document.createElement('div');
             el.className = `block ${b.type}`;
-            el.style.width = `${pct}%`;
+            if (vertical) {
+                el.style.width = '100%';
+                el.style.height = `${pct}%`;
+            } else {
+                el.style.width = `${pct}%`;
+            }
             
             if (b.type === 'editable') {
-                let pref = userPrefs[b.id] || {};
-                let dName = pref.name || b.defaultName;
-                let dColor = pref.color || DEFAULT_COLORS[b.id] || "#333333";
+                let dName = getBlockName(b);
+                let dColor = getBlockColor(b);
                 
                 el.style.backgroundColor = dColor;
                 el.innerHTML = `
@@ -656,11 +843,14 @@
                 `;
                 el.onclick = () => openModal(b.id, dName, dColor);
             } else if (b.type === 'passing') {
-                el.innerHTML = `<div class="block-time" style="writing-mode: vertical-rl; transform: rotate(180deg);">${dur}m</div>`;
+                const timeStyle = vertical ? '' : ' style="writing-mode: vertical-rl; transform: rotate(180deg);"';
+                el.innerHTML = `<div class="block-time"${timeStyle}>${dur}m</div>`;
             }
 
             ui.track.insertBefore(el, ui.playhead);
+            if (b.type === 'editable') blockTextObserver.observe(el);
         });
+        if (!isVerticalTimeline()) fitTimelineBlockText();
         buildRuler();
     }
 
@@ -709,15 +899,64 @@
     // Tick & Playhead Updates
     function positionPlayheadBubble() {
         if (ui.playhead.style.display !== 'block') return;
-        const trackWidth = ui.track.clientWidth;
-        const linePosition = parseFloat(ui.playhead.style.left) / 100 * trackWidth;
+        const vertical = isVerticalTimeline();
+        const trackExtent = vertical ? ui.track.clientHeight : ui.track.clientWidth;
+        const linePosition = parseFloat(vertical ? ui.playhead.style.top : ui.playhead.style.left)
+            / 100 * trackExtent;
         const trackRect = ui.track.getBoundingClientRect();
         const rulerRect = ui.ruler.getBoundingClientRect();
+        if (vertical) {
+            ui.rulerPlayhead.style.top = `${trackRect.top + ui.track.clientTop + linePosition - rulerRect.top}px`;
+            ui.rulerPlayhead.style.left = '';
+            ui.playheadTime.style.setProperty('--bubble-offset', '0px');
+            return;
+        }
         ui.rulerPlayhead.style.left = `${trackRect.left + ui.track.clientLeft + linePosition - rulerRect.left}px`;
+        ui.rulerPlayhead.style.top = '';
         const halfBubbleWidth = ui.playheadTime.offsetWidth / 2;
         const center = Math.max(halfBubbleWidth,
-            Math.min(trackWidth - halfBubbleWidth, linePosition));
+            Math.min(trackExtent - halfBubbleWidth, linePosition));
         ui.playheadTime.style.setProperty('--bubble-offset', `${center - linePosition}px`);
+    }
+
+    function fitTextToWidth(element, getAvailableWidth) {
+        element.style.removeProperty('--fitted-font-size');
+        if (!element.textContent) return;
+
+        const availableWidth = getAvailableWidth();
+        if (availableWidth <= 0) return;
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        const textWidth = range.getBoundingClientRect().width;
+        if (textWidth > availableWidth) {
+            const fontSize = parseFloat(getComputedStyle(element).fontSize);
+            element.style.setProperty('--fitted-font-size', `${fontSize * Math.max(0, availableWidth - 1) / textWidth}px`);
+        }
+    }
+
+    function fitSummaryName(element) {
+        fitTextToWidth(element, () => element.parentElement.getBoundingClientRect().width);
+    }
+
+    function setSummaryName(element, name) {
+        if (element.textContent === name) return;
+        element.textContent = name;
+        fitSummaryName(element);
+    }
+
+    function fitLiveDate() {
+        ui.liveDate.style.removeProperty('--date-font-size');
+        if (!ui.liveDate.textContent) return;
+
+        const range = document.createRange();
+        range.selectNodeContents(ui.liveTime);
+        const clockWidth = range.getBoundingClientRect().width;
+        range.selectNodeContents(ui.liveDate);
+        const dateWidth = range.getBoundingClientRect().width;
+        if (!clockWidth || !dateWidth) return;
+        const availableWidth = Math.min(clockWidth, ui.liveDate.parentElement.clientWidth);
+        const fontSize = parseFloat(getComputedStyle(ui.liveDate).fontSize);
+        ui.liveDate.style.setProperty('--date-font-size', `${fontSize * (availableWidth - 1) / dateWidth}px`);
     }
 
     function updateTick() {
@@ -736,6 +975,7 @@
         if (dateKey !== displayedDateKey) {
             ui.liveDate.textContent = dateFormatter.format(now).toUpperCase();
             displayedDateKey = dateKey;
+            fitLiveDate();
         }
 
         let curMins = (now.getHours() * 60) + now.getMinutes() + (now.getSeconds() / 60);
@@ -751,7 +991,13 @@
             ui.playhead.style.display = 'block';
             ui.rulerPlayhead.style.display = 'block';
             let pct = ((curMins - START_MINS) / TOTAL_MINS) * 100;
-            ui.playhead.style.left = `${pct}%`;
+            if (isVerticalTimeline()) {
+                ui.playhead.style.top = `${pct}%`;
+                ui.playhead.style.left = '';
+            } else {
+                ui.playhead.style.left = `${pct}%`;
+                ui.playhead.style.top = '';
+            }
             positionPlayheadBubble();
         } else {
             ui.playhead.style.display = 'none';
@@ -762,33 +1008,31 @@
         let activeBlock = currentLayout.find(b => curMins >= b.s && curMins < b.e && b.type !== 'empty');
         
         if (curMins < START_MINS) {
-            ui.currPeriod.textContent = "BEFORE SCHOOL";
-            ui.countdown.textContent = "--:--";
+            setSummaryName(ui.currPeriod, "BEFORE SCHOOL");
+            ui.countdown.textContent = "--:--:--";
         } else if (curMins >= END_MINS || !activeBlock) {
-            ui.currPeriod.textContent = "END OF DAY";
-            ui.countdown.textContent = "00:00";
+            setSummaryName(ui.currPeriod, "END OF DAY");
+            ui.countdown.textContent = "00:00:00";
         } else {
             let displayName = activeBlock.name;
             if (activeBlock.type === 'editable') {
-                 let pref = userPrefs[activeBlock.id] || {};
-                 displayName = pref.name || activeBlock.defaultName;
+                 displayName = getBlockName(activeBlock);
             }
-            ui.currPeriod.textContent = displayName.toUpperCase();
+            setSummaryName(ui.currPeriod, displayName.toUpperCase());
             
-            let remain = activeBlock.e - curMins;
-            if (remain >= 60) {
-                let totalSeconds = remain * 60;
-                let d = Math.floor(totalSeconds / (24 * 3600));
-                let h = Math.floor((totalSeconds % (24 * 3600)) / 3600);
-                let m = Math.floor((totalSeconds % 3600) / 60);
-                let s = Math.floor(totalSeconds % 60);
-                ui.countdown.textContent = `${d.toString().padStart(2, '0')}:${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-            } else {
-                let rm = Math.floor(remain);
-                let rs = Math.floor((remain - rm) * 60);
-                ui.countdown.textContent = `${rm.toString().padStart(2, '0')}:${rs.toString().padStart(2, '0')}`;
-            }
+            const totalSeconds = activeBlock.e * 60
+                - (now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds());
+            const hours = Math.floor(totalSeconds / 3600);
+            const minutes = Math.floor(totalSeconds % 3600 / 60);
+            const seconds = totalSeconds % 60;
+            ui.countdown.textContent = [hours, minutes, seconds]
+                .map(value => value.toString().padStart(2, '0')).join(':');
         }
+        const nextBlock = getNextBlock();
+        ui.currPeriod.style.setProperty('--block-color',
+            activeBlock && activeBlock.type === 'editable' ? getBlockColor(activeBlock) : '#ffffff');
+        setSummaryName(ui.nextPeriod, nextBlock ? getBlockName(nextBlock).toUpperCase() : 'NONE');
+        ui.nextPeriod.style.setProperty('--block-color', nextBlock ? getBlockColor(nextBlock) : '#ffffff');
         updateCountdownWindow();
     }
 
@@ -807,6 +1051,35 @@
     setInterval(updateTick, 1000);
     updateTick();
     setZoom(FOCUS_ZOOM);
+
+    let lastViewportHeight = ui.timelineViewport.clientHeight;
+    new ResizeObserver(() => {
+        const height = ui.timelineViewport.clientHeight;
+        if (height === lastViewportHeight) return;
+        lastViewportHeight = height;
+        if (isVerticalTimeline()) setZoom(currentZoom);
+    }).observe(ui.timelineViewport);
+
+    new ResizeObserver(() => {
+        fitSummaryName(ui.currPeriod);
+        fitSummaryName(ui.nextPeriod);
+    }).observe(document.getElementById('schedule-summary'));
+
+    const summaryNameObserver = new ResizeObserver(entries => {
+        entries.forEach(entry => {
+            fitSummaryName(entry.target === ui.currPeriod.parentElement ? ui.currPeriod : ui.nextPeriod);
+        });
+    });
+    summaryNameObserver.observe(ui.currPeriod.parentElement);
+    summaryNameObserver.observe(ui.nextPeriod.parentElement);
+
+    let lastClockWidth = ui.liveTime.parentElement.clientWidth;
+    new ResizeObserver(() => {
+        const width = ui.liveTime.parentElement.clientWidth;
+        if (width === lastClockWidth) return;
+        lastClockWidth = width;
+        fitLiveDate();
+    }).observe(ui.liveTime.parentElement);
 
     // Auto-refresh layout at midnight
     setInterval(() => {

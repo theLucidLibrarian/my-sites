@@ -18,18 +18,24 @@
                 <div id="live-time">00:00:00</div>
                 <div id="live-date">YYYY-MM-DD</div>
             </div>
-            <div class="dash-item">
-                <div class="label">Current Block</div>
-                <div id="current-period">OFFLINE</div>
-            </div>
-            <div class="dash-item">
-                <div class="label">Time Remaining</div>
-                <div class="countdown-row">
-                    <div id="countdown">--:--</div>
-                    <button id="btn-popout" type="button" aria-label="Pop out countdown and next period"
-                            title="Open an always-on-top countdown window">POP OUT</button>
+            <div id="schedule-summary">
+                <div class="dash-item">
+                    <div class="label">Current Block</div>
+                    <button id="current-period" class="summary-popout-trigger" type="button" title="Open or close the countdown pop-out">OFFLINE</button>
                 </div>
-                <span id="popout-status" role="status" aria-live="polite"></span>
+                <div class="dash-item" id="next-block-item">
+                    <div class="label">Next Block</div>
+                    <button id="next-period" class="summary-popout-trigger" type="button" title="Open or close the countdown pop-out">NONE</button>
+                </div>
+                <div class="dash-item">
+                    <div class="label">Time Remaining</div>
+                    <div class="countdown-row">
+                        <button id="countdown" class="summary-popout-trigger" type="button" title="Open or close the countdown pop-out">--:--:--</button>
+                        <button id="btn-popout" type="button" aria-label="Pop out countdown and next period"
+                                title="Open an always-on-top countdown window">POP OUT</button>
+                    </div>
+                    <span id="popout-status" role="status" aria-live="polite"></span>
+                </div>
             </div>
         </div>
 
@@ -87,11 +93,11 @@
     <!-- WORKSPACE / TIMELINE -->
     <div id="workspace">
         <div id="zoom-controls" aria-label="Schedule zoom controls">
-            <button id="focus-playhead" type="button" title="Zoom to 800% and follow the current time" aria-pressed="true">FOCUS</button>
+            <button id="focus-playhead" type="button" title="Zoom to 1x and follow the current time" aria-pressed="true">FOCUS</button>
             <label for="zoom-slider">ZOOM</label>
-            <input id="zoom-slider" type="range" min="100" max="800" step="25" value="100"
+            <input id="zoom-slider" type="range" min="100" max="1600" step="25" value="800"
                    aria-label="Schedule zoom">
-            <output id="zoom-value" for="zoom-slider">100%</output>
+            <output id="zoom-value" for="zoom-slider">1x</output>
             <button id="zoom-reset" type="button">RESET</button>
         </div>
         <div id="pan-controls">

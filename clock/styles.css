@@ -45,15 +45,16 @@
         background-color: var(--bg-panel);
         border-bottom: 2px solid var(--border-color);
         display: grid;
-        grid-template-columns: auto minmax(0, 1fr) auto;
+        grid-template-columns: minmax(0, 1fr) auto;
         align-items: center;
         column-gap: 28px;
         padding: 7px 10px;
         box-shadow: 0 4px 10px rgba(0,0,0,0.5);
-        z-index: 10;
+        z-index: 60;
     }
 
     #home-link {
+        display: none;
         justify-self: start;
         padding: 8px 12px;
         border: 1px solid var(--border-color);
@@ -120,11 +121,31 @@
         flex-direction: column;
     }
 
+    #schedule-summary { display: contents; }
+    #schedule-summary > .dash-item:last-child { position: relative; }
+
     #live-time { font-size: 42px; font-weight: bold; line-height: 1; }
-    #live-date { font-size: 14px; color: var(--text-dim); margin-top: 4px; }
+    #live-date { font-size: var(--date-font-size, 22px); font-weight: bold; color: var(--text-dim); margin-top: 4px; white-space: nowrap; }
     
-    #current-period { font-size: 28px; font-weight: bold; color: var(--text-main); }
+    #current-period, #next-period { font-size: 28px; font-weight: bold; color: var(--text-main); }
     #countdown { font-size: 28px; color: var(--accent); font-weight: bold; }
+
+    #current-period, #next-period, #countdown {
+        padding: 0;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        text-align: inherit;
+        transition: none;
+    }
+
+    #current-period:hover, #next-period:hover, #countdown:hover { background: transparent; }
+
+    @media (hover: hover) {
+        #schedule-summary:has(.summary-popout-trigger:hover) .summary-popout-trigger {
+            opacity: 0.7;
+        }
+    }
 
     .countdown-row {
         display: flex;
@@ -133,6 +154,7 @@
     }
 
     #btn-popout {
+        display: none;
         padding: 5px 8px;
         font-size: 11px;
         white-space: nowrap;
@@ -149,6 +171,15 @@
         max-width: 240px;
         color: #fca5a5;
         font-size: 10px;
+    }
+
+    #popout-status:not(:empty) {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        z-index: 1;
+        padding: 6px;
+        background: var(--bg-modal);
     }
 
     /* Controls */
@@ -183,6 +214,9 @@
     .week-switch {
         position: relative;
         display: flex;
+        flex-shrink: 0;
+        width: 48px;
+        height: 24px;
         padding: 2px;
         border: 1px solid var(--border-color);
         border-radius: 5px;
@@ -196,8 +230,12 @@
     }
 
     .week-switch label {
-        min-width: 29px;
-        padding: 6px 10px;
+        display: flex;
+        flex: 1;
+        align-items: center;
+        justify-content: center;
+        min-width: 0;
+        padding: 0;
         border-radius: 3px;
         color: var(--text-dim);
         font-size: 12px;
@@ -216,8 +254,8 @@
     }
 
     #btn-min-day {
-        width:64px;
-        height: 32px;
+        width:48px;
+        height: 24px;
         padding: 0;
         font-size: 12px;
     }
@@ -232,21 +270,10 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        width: 64px;
+        width: 48px;
+        height: 24px;
         padding: 7px 12px;
         font-size: 12px;
-    }
-
-    #day-override-button::after {
-        content: '';
-        position: absolute;
-        right: 5px;
-        top: 50%;
-        border-left: 4px solid transparent;
-        border-right: 4px solid transparent;
-        border-top: 5px solid var(--text-dim);
-        transform: translateY(-30%);
-        transition: transform 0.2s;
     }
 
     #day-override-button[aria-expanded="true"]::after {
@@ -258,7 +285,7 @@
         top: calc(100% + 3px);
         left: 0;
         z-index: 20;
-        width: 64px;
+        width: 48px;
         padding: 3px;
         border: 1px solid var(--border-color);
         border-radius: 4px;
@@ -332,7 +359,8 @@
         position: absolute;
         top: 8px;
         right: 20px;
-        display: flex;
+        display: grid;
+        grid-template-columns: max-content max-content 120px 6ch max-content;
         align-items: center;
         gap: 8px;
         color: var(--text-dim);
@@ -345,9 +373,13 @@
         cursor: pointer;
     }
 
+    #zoom-value { flex: 0 0 6ch; min-width: 0; text-align: right; }
+
     #zoom-reset, #focus-playhead {
         padding: 4px 8px;
         font-size: 11px;
+        width: 48px;
+        height: 24px;
     }
 
     #pan-controls {
@@ -422,6 +454,18 @@
         bottom: 0;
         border-left: 1px solid var(--text-dim);
         height: 8px;
+    }
+
+    .ruler-ticks {
+        position: absolute;
+        bottom: 0;
+        width: 100%;
+        height: 12px;
+        stroke: var(--text-dim);
+        stroke-width: 1px;
+        opacity: 0.8;
+        z-index: 51;
+        pointer-events: none;
     }
 
     .tick-label {
@@ -517,7 +561,7 @@
     }
 
     .block-name {
-        font-size: 16px;
+        font-size: min(16px, var(--fitted-font-size, 16px));
         font-weight: bold;
         white-space: nowrap;
         text-overflow: ellipsis;
@@ -532,6 +576,8 @@
         margin-top: 4px;
         white-space: nowrap;
     }
+
+    .block.editable .block-time { font-size: min(11px, var(--fitted-font-size, 11px)); }
 
     /* PLAYHEAD */
     #playhead {
@@ -616,11 +662,83 @@
     .btn-save { background: #10b981; border-color: #10b981; color: white;}
     .btn-save:hover { background: #059669; }
 
+    @media (min-width: 801px) {
+        body { --desktop-pan-width: min(380px, calc(100vw - 715px)); }
+        #top-panel {
+            flex: 0 0 auto;
+            min-height: 0;
+            position: relative;
+            grid-template-columns: minmax(0, 1fr);
+        }
+        #dashboard {
+            --desktop-clock-font-size: 42px;
+            display: grid;
+            grid-template-columns: minmax(max-content, 1fr) fit-content(40%) fit-content(30%) max-content;
+            min-width: 0;
+            width: 100%;
+            column-gap: clamp(8px, 1.5vw, 40px);
+            row-gap: 0;
+            align-self: stretch;
+            align-content: start;
+            align-items: start;
+        }
+        #dashboard .dash-item { min-width: 0; }
+        #dashboard > .dash-item {
+            grid-area: 1 / 1;
+            align-self: start;
+        }
+        #schedule-summary > .dash-item { align-self: end; }
+        #schedule-summary > .dash-item > .label { text-align: right; }
+        #schedule-summary > .dash-item:first-child { grid-area: 1 / 2; }
+        #next-block-item { grid-area: 1 / 3; }
+        #schedule-summary > .dash-item:last-child { grid-area: 1 / 4; }
+        #popout-status:empty { display: none; }
+        #live-time { font-size: var(--desktop-clock-font-size); }
+        #current-period, #next-period {
+            font-size: min(var(--desktop-clock-font-size), var(--fitted-font-size, var(--desktop-clock-font-size)));
+            line-height: 1;
+            white-space: nowrap;
+        }
+        #countdown {
+            font-size: var(--desktop-clock-font-size);
+            line-height: 1;
+        }
+        #controls {
+            position: absolute;
+            top: calc(100% + 8px);
+            left: calc(33px + var(--desktop-pan-width));
+        }
+        #schedule-controls { flex-direction: row; gap: 12px; }
+        .setting-row { gap: 4px; }
+        .setting-row > .label {
+            flex: 0 0 auto;
+            width: auto;
+            min-width: 0;
+        }
+        #pan-controls {
+            left: 20px;
+            right: auto;
+            width: var(--desktop-pan-width);
+        }
+        #pan-slider { width: auto; min-width: 0; flex: 1 1 auto; }
+    }
+
+    @media (min-width: 801px) and (max-width: 1050px) {
+        body { --desktop-pan-width: min(380px, calc(100vw - 675px)); }
+        #zoom-controls { grid-template-columns: max-content max-content 80px 6ch max-content; }
+        #zoom-slider { width: 80px; }
+    }
+
+    @media (min-width: 801px) and (max-width: 999px) {
+        #dashboard { --desktop-clock-font-size: 36px; }
+        #live-date { font-size: var(--date-font-size, 16px); }
+    }
+
     /* MOBILE / NARROW SCREENS */
     @media (max-width: 800px) {
         body {
-            height: auto;
-            min-height: 100dvh;
+            height: 100dvh;
+            min-height: 0;
             width: 100%;
             overflow-x: hidden;
             overflow-y: auto;
@@ -628,36 +746,70 @@
 
         #top-panel {
             flex: 0 0 auto;
-            display: flex;
-            flex-direction: column;
-            align-items: stretch;
-            gap: 14px;
-            padding: 12px 14px;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            grid-template-areas:
+                "clock controls"
+                "summary summary";
+            align-items: start;
+            gap: 10px 12px;
+            padding: 12px 14px 0px 14px;
         }
 
         #dashboard {
-            flex-wrap: wrap;
-            gap: 12px 24px;
-            justify-self: auto;
+            display: contents;
         }
 
-        #live-time { font-size: 34px; }
-        #current-period, #countdown { font-size: 22px; }
+        #dashboard .dash-item { min-width: 0; }
+        #dashboard > .dash-item { grid-area: clock; container-type: inline-size; }
+        #schedule-summary {
+            grid-area: summary;
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 8px;
+        }
+        #schedule-summary .dash-item { container-type: inline-size; }
+        #schedule-summary .label { font-size: clamp(8px, 2.4vw, 11px); letter-spacing: 0.5px; }
+        #next-block-item {
+            display: flex;
+            align-items: center;
+            text-align: center;
+        }
+        #schedule-summary .dash-item:last-child {
+            align-items: flex-end;
+            text-align: right;
+        }
 
+        #live-time { font-size: min(96px, 20cqw); }
+        #live-date { font-size: var(--date-font-size, 14px); white-space: nowrap; }
+        #current-period, #next-period, #countdown { overflow-wrap: anywhere; }
+        #countdown { min-width: 0; }
+        #current-period, #next-period, #countdown {
+            font-size: min(36px, 18cqw);
+            font-weight: bold;
+        }
+        #current-period, #next-period {
+            font-size: min(36px, 18cqw, var(--fitted-font-size, 36px));
+            white-space: nowrap;
+            color: #fff;
+            color: color-mix(in srgb, var(--block-color, #fff) 45%, white);
+            color: hsl(from var(--block-color, #fff) h calc(s * 1.5) max(l, 70));
+        }
         #controls {
-            flex-wrap: wrap;
-            gap: 12px;
-            justify-self: auto;
+            grid-area: controls;
+            justify-self: end;
         }
 
-        .week-switch label { min-width: 44px; padding: 10px 12px; font-size: 13px; }
+        .week-switch { width: 48px; height: 24px; }
+        .week-switch label { font-size: 13px; }
         button, select { padding: 10px 14px; }
         #day-override-button { padding: 10px 12px; font-size: 13px; }
         #day-override-options .day-override-option { font-size: 13px; }
 
         #workspace {
-            flex: 0 0 auto;
-            padding: 12px 10px 24px;
+            flex: 1 1 0;
+            min-height: 0;
+            padding: 12px 10px 0px;
             gap: 10px;
         }
 
@@ -666,14 +818,147 @@
             flex-wrap: wrap;
         }
 
-        #zoom-controls { justify-content: space-between; }
+        #zoom-controls { display: flex; justify-content: space-between; }
         #zoom-slider { flex: 1 1 100px; min-width: 80px; }
         #pan-slider { flex: 1 1 auto; width: auto; }
-        #pan-controls { width: 100%; }
+        #pan-controls { display: none; }
 
         #timeline-viewport {
-            flex: 0 0 auto;
+            flex: 1 1 0;
+            height: auto;
+            min-height: 0;
+            overflow-x: hidden;
+            overflow-y: auto;
             -webkit-overflow-scrolling: touch;
+        }
+
+        #timeline-content {
+            flex-direction: row;
+            width: max-content;
+        }
+
+        #ruler {
+            flex: 0 0 70px;
+            width: 70px;
+            height: auto;
+            margin-right: 8px;
+            margin-bottom: 0;
+            border-right: 1px solid var(--border-color);
+            border-bottom: 0;
+        }
+
+        #boundary-labels {
+            display: none;
+        }
+
+        .tick {
+            top: 0;
+            right: 0;
+            bottom: auto;
+            left: auto;
+            width: 4px;
+            height: 0;
+            border-left: 0;
+            border-top: 1px solid var(--text-dim);
+        }
+
+        .tick-label {
+            top: 0;
+            right: 14px;
+            bottom: auto;
+            left: auto;
+            transform: translateY(-50%);
+            text-align: right;
+        }
+
+        .boundary-tick {
+            top: 0;
+            right: 0;
+            bottom: auto;
+            left: auto;
+            width: 12px;
+            height: 0;
+            border-left: 0;
+            border-top: 1px solid #a1a1aa;
+        }
+
+        #ruler-playhead, #playhead {
+            z-index: 52;
+        }
+
+        #ruler-playhead {
+            top: 0;
+            right: -2px;
+            bottom: auto;
+            left: auto;
+            width: 8px;
+            height: 2px;
+            background-color: transparent;
+        }
+
+        #ruler-playhead::before {
+            top: -6px;
+            right: 0;
+            left: auto;
+            border: 0;
+            border-top: 7px solid transparent;
+            border-bottom: 7px solid transparent;
+            border-left: 10px solid var(--accent);
+        }
+
+        #track-container {
+            flex: 0 0 min(320px, calc(100vw - 210px));
+            width: min(320px, calc(100vw - 210px));
+            min-width: 0;
+            min-height: 0;
+            overflow: visible;
+            flex-direction: column;
+        }
+
+        .block {
+            width: 100%;
+            height: auto;
+            flex: 0 0 auto;
+            padding-block: 0;
+            border-right: 0;
+            border-bottom: 0;
+        }
+
+        .block.editable {
+            padding: 0 5px;
+            container-type: size;
+        }
+
+        .block.editable .block-name,
+        .block.editable .block-time {
+            flex-shrink: 0;
+            line-height: 1.2;
+        }
+
+        .block.editable .block-name { font-size: min(16px, 38cqh); }
+        .block.editable .block-time {
+            font-size: min(11px, 38cqh);
+            margin-top: min(4px, 8cqh);
+        }
+
+        #playhead {
+            top: 0;
+            right: 0;
+            bottom: auto;
+            left: -9px;
+            width: auto;
+            height: 2px;
+        }
+
+        #playhead-time {
+            top: 50%;
+            right: auto;
+            left: 100%;
+            transform: translate(-50%, -50%);
+        }
+
+        #track-resize-handle {
+            display: none;
         }
 
         #modal { width: min(320px, 92vw); }
